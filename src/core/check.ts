@@ -1,10 +1,10 @@
 import { isSquareAttacked } from './attack';
 import { BOARD_SIZE } from './constants';
 import { allCells, boardOrigin, offset, squareAt } from './coords';
-import { movesLandingOn, movesTouching } from './legal';
+import { movesLandingOn } from './legal';
 import { opposite } from './pieces';
 import { pieceAt } from './plane';
-import type { BoardIndex, BoardStatus, Color, GameState, GlobalSquare, Plane } from './types';
+import type { BoardIndex, Color, GameState, GlobalSquare, Plane } from './types';
 
 /** Locate `color`'s king on `board`, or null if it isn't there. */
 export const kingSquare = (plane: Plane, board: BoardIndex, color: Color): GlobalSquare | null => {
@@ -50,18 +50,3 @@ export const ownKingsInCheck = (state: GameState, color: Color): boolean => {
  */
 export const isCheckmate = (state: GameState, board: BoardIndex): boolean =>
   inCheck(state, board, state.toMove) && movesLandingOn(state, board).length === 0;
-
-/** Stalemate on `board`: not in check, but the side to move has no move touching it. */
-export const isStalemate = (state: GameState, board: BoardIndex): boolean =>
-  !inCheck(state, board, state.toMove) && movesTouching(state, board).length === 0;
-
-/** Recompute a single (non-frozen) board's status for the side now to move. */
-export const boardStatusAfter = (state: GameState, board: BoardIndex): BoardStatus => {
-  const defender = state.toMove;
-  if (inCheck(state, board, defender)) {
-    return movesLandingOn(state, board).length === 0
-      ? { kind: 'checkmate', loser: defender, winner: opposite(defender) }
-      : { kind: 'check', inCheck: defender };
-  }
-  return movesTouching(state, board).length === 0 ? { kind: 'stalemate' } : { kind: 'active' };
-};

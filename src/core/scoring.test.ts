@@ -15,7 +15,7 @@ describe('scoring', () => {
       mate('white'),
       mate('white'),
       mate('black'),
-      { kind: 'stalemate' },
+      { kind: 'draw', reason: 'fifty-move' },
       { kind: 'active' },
       { kind: 'check', inCheck: 'white' },
       { kind: 'active' },
@@ -37,7 +37,7 @@ describe('scoring', () => {
       mate('black'),
       mate('black'),
       mate('black'),
-      { kind: 'stalemate' },
+      { kind: 'draw', reason: 'fifty-move' },
     ];
     const s = stateOf({ plane: planeOf([]), status });
     expect(gameOver(s)).toBe(true);
@@ -48,13 +48,13 @@ describe('scoring', () => {
     const status: BoardStatus[] = [
       mate('white'),
       mate('black'),
-      { kind: 'stalemate' },
-      { kind: 'stalemate' },
-      { kind: 'stalemate' },
-      { kind: 'stalemate' },
-      { kind: 'stalemate' },
-      { kind: 'stalemate' },
-      { kind: 'stalemate' },
+      { kind: 'draw', reason: 'fifty-move' },
+      { kind: 'draw', reason: 'fifty-move' },
+      { kind: 'draw', reason: 'fifty-move' },
+      { kind: 'draw', reason: 'fifty-move' },
+      { kind: 'draw', reason: 'fifty-move' },
+      { kind: 'draw', reason: 'fifty-move' },
+      { kind: 'draw', reason: 'fifty-move' },
     ];
     const s = stateOf({ plane: planeOf([]), status });
     expect(gameOver(s)).toBe(true);

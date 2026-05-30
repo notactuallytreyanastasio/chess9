@@ -50,7 +50,6 @@ const STATUS_SYMBOL: Readonly<Record<BoardStatus['kind'], string>> = {
   active: '',
   check: '+',
   checkmate: '#',
-  stalemate: '=',
   draw: '½',
 };
 
@@ -60,7 +59,7 @@ const renderBoardMap = (state: GameState): HTMLElement => {
     const cell = el('div', 'board-map-cell');
     if (s.kind === 'checkmate') {
       cell.classList.add(s.winner === 'white' ? 'won-white' : 'won-black');
-    } else if (s.kind === 'stalemate' || s.kind === 'draw') {
+    } else if (s.kind === 'draw') {
       cell.classList.add('drawn');
     } else if (s.kind === 'check') {
       cell.classList.add('in-check');
@@ -165,7 +164,7 @@ const renderBoard = (state: GameState, vm: ViewModel, handlers: Handlers): HTMLE
   return board;
 };
 
-/** Centered overlay label for a frozen (checkmate / stalemate / draw) board, or null. */
+/** Centered overlay label for a frozen (checkmate / draw) board, or null. */
 const boardOverlay = (status: BoardStatus): HTMLElement | null => {
   if (status.kind === 'checkmate') {
     const won = status.winner === 'white';
@@ -175,13 +174,11 @@ const boardOverlay = (status: BoardStatus): HTMLElement | null => {
     o.appendChild(el('div', 'overlay-sub', won ? 'You win' : 'Bot wins'));
     return o;
   }
-  if (status.kind === 'stalemate' || status.kind === 'draw') {
+  if (status.kind === 'draw') {
     const o = el('div', 'board-overlay drawn-overlay');
     o.appendChild(el('div', 'overlay-symbol', '½'));
-    o.appendChild(el('div', 'overlay-label', status.kind === 'stalemate' ? 'Stalemate' : 'Draw'));
-    if (status.kind === 'draw') {
-      o.appendChild(el('div', 'overlay-sub', status.reason === 'fifty-move' ? '50-move' : 'Material'));
-    }
+    o.appendChild(el('div', 'overlay-label', 'Draw'));
+    o.appendChild(el('div', 'overlay-sub', status.reason === 'fifty-move' ? '50-move' : 'Material'));
     return o;
   }
   return null;
