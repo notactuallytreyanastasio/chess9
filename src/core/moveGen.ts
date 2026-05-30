@@ -1,7 +1,8 @@
-import { allCells, boardOf, offset, squareAt, toBoardSquare } from './coords';
+import { isSquareAttacked } from './attack';
+import { allCells, boardOf, boardOrigin, offset, squareAt, toBoardSquare } from './coords';
 import { hasCredit } from './ledger';
 import { pieceAt } from './plane';
-import { forwardDir, isCrossingType } from './pieces';
+import { forwardDir, isCrossingType, opposite } from './pieces';
 import {
   BISHOP_DIRS,
   QUEEN_DIRS,
@@ -93,6 +94,59 @@ const genKnight = (
   }
 };
 
+const HOME_RANK: Readonly<Record<Color, number>> = { white: 7, black: 0 };
+const KING_HOME_FILE = 4;
+
+/**
+ * Castling (within a single board — kings never cross). Requires an unmoved
+ * king and the corner rook unmoved, the squares between them empty, the king
+ * not currently in check, and the two squares the king transits/lands on not
+ * attacked (incl. by a piece that just crossed onto this board).
+ */
+const genCastle = (
+  out: Move[],
+  state: GameState,
+  color: Color,
+  king: Piece,
+  from: GlobalSquare,
+): void => {
+  if (king.hasMoved) return;
+  const origin = boardOrigin(boardOf(from));
+  const localFile = from.gx - origin.gx;
+  const localRank = from.gy - origin.gy;
+  if (localFile !== KING_HOME_FILE || localRank !== HOME_RANK[color]) return;
+
+  const enemy = opposite(color);
+  if (isSquareAttacked(state.plane, from, enemy)) return; // cannot castle out of check
+
+  const at = (file: number): GlobalSquare | null => offset(origin, file, localRank);
+  const empty = (sq: GlobalSquare | null): boolean => sq !== null && pieceAt(state.plane, sq) === null;
+  const safe = (sq: GlobalSquare | null): boolean =>
+    sq !== null && !isSquareAttacked(state.plane, sq, enemy);
+  const cornerRook = (sq: GlobalSquare | null): boolean => {
+    if (sq === null) return false;
+    const p = pieceAt(state.plane, sq);
+    return p !== null && p.type === 'rook' && p.color === color && !p.hasMoved;
+  };
+
+  // King-side: king e->g, rook h->f. Transit/land squares f(5), g(6).
+  const f = at(5);
+  const g = at(6);
+  const hRook = at(7);
+  if (cornerRook(hRook) && empty(f) && empty(g) && safe(f) && safe(g) && g !== null && hRook !== null && f !== null) {
+    out.push({ kind: 'castle', side: 'king', from, to: g, piece: king, captured: null, crossing: null, rookFrom: hRook, rookTo: f });
+  }
+
+  // Queen-side: king e->c, rook a->d. Transit/land squares d(3), c(2); b(1) only needs to be empty.
+  const d = at(3);
+  const c = at(2);
+  const b = at(1);
+  const aRook = at(0);
+  if (cornerRook(aRook) && empty(d) && empty(c) && empty(b) && safe(d) && safe(c) && c !== null && aRook !== null && d !== null) {
+    out.push({ kind: 'castle', side: 'queen', from, to: c, piece: king, captured: null, crossing: null, rookFrom: aRook, rookTo: d });
+  }
+};
+
 const genKing = (
   out: Move[],
   state: GameState,
@@ -104,6 +158,7 @@ const genKing = (
     if (t.crossings !== 0) continue; // kings are board-bound
     emitStep(out, state, color, piece, from, t.square, pieceAt(state.plane, t.square));
   }
+  genCastle(out, state, color, piece, from);
 };
 
 const genPawn = (
