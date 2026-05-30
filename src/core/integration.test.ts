@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mkBoardIndex } from './coords';
-import { creditCount } from './ledger';
+import { creditCount, emptyLedger, grantCredit } from './ledger';
 import { findLegalMove, legalMoves } from './legal';
 import { pieceAt } from './plane';
 import { applyMove } from './reducer';
@@ -42,12 +42,49 @@ describe('end-to-end earned crossing', () => {
     expect(s.toMove).toBe('white');
 
     const crossing = need(findLegalMove(s, sq(7, 7), sq(8, 8))); // white bishop crosses board 0 -> 4
-    expect(crossing.crossing?.toBoard).toBe(4);
+    expect(crossing.crossings.map((c) => c.toBoard)).toEqual([4]);
     s = step(s, crossing);
 
     expect(pieceAt(s.plane, sq(8, 8))).toEqual({ type: 'bishop', color: 'white', hasMoved: true });
     expect(creditCount(s.ledger, board(4), 'white', 'bishop')).toBe(0); // spent
     expect(creditCount(s.ledger, board(4), 'black', 'bishop')).toBe(1); // black's bishop just captured there
+  });
+
+  it('a 2-board bishop slide debits a credit on BOTH entered boards', () => {
+    // White bishop on board 0 slides NE through board 4 onto board 8, landing at
+    // (16,16). It enters boards 4 and 8, so it requires — and spends — a bishop
+    // credit on EACH.
+    const plane = planeOf([
+      [sq(0, 7), pc('king', 'white')],
+      [sq(7, 7), pc('bishop', 'white')],
+      [sq(23, 0), pc('king', 'black')],
+    ]);
+    let ledger = grantCredit(emptyLedger(), board(4), 'white', 'bishop');
+    ledger = grantCredit(ledger, board(8), 'white', 'bishop');
+    const s = stateOf({ plane, toMove: 'white', ledger });
+
+    const slide = need(findLegalMove(s, sq(7, 7), sq(16, 16)));
+    expect(slide.crossings.map((c) => c.toBoard)).toEqual([4, 8]);
+
+    const after = step(s, slide);
+    expect(pieceAt(after.plane, sq(16, 16))).toEqual({ type: 'bishop', color: 'white', hasMoved: true });
+    expect(creditCount(after.ledger, board(4), 'white', 'bishop')).toBe(0); // pass-through credit spent
+    expect(creditCount(after.ledger, board(8), 'white', 'bishop')).toBe(0); // landing credit spent
+  });
+
+  it('the same 2-board slide is rejected when EITHER required credit is missing', () => {
+    const plane = planeOf([
+      [sq(0, 7), pc('king', 'white')],
+      [sq(7, 7), pc('bishop', 'white')],
+      [sq(23, 0), pc('king', 'black')],
+    ]);
+    // Missing the board-8 (landing) credit: no legal slide reaches (16,16).
+    const only4 = grantCredit(emptyLedger(), board(4), 'white', 'bishop');
+    expect(findLegalMove(stateOf({ plane, toMove: 'white', ledger: only4 }), sq(7, 7), sq(16, 16))).toBeNull();
+
+    // Missing the board-4 (pass-through) credit: the slide cannot even reach board 8.
+    const only8 = grantCredit(emptyLedger(), board(8), 'white', 'bishop');
+    expect(findLegalMove(stateOf({ plane, toMove: 'white', ledger: only8 }), sq(7, 7), sq(16, 16))).toBeNull();
   });
 });
 
@@ -61,19 +98,25 @@ describe('forged illegal moves are rejected by the reducer', () => {
       to: sq(8, 15),
       piece: pc('king', 'white', true),
       captured: null,
-      crossing: { fromBoard: board(7), toBoard: board(6), creditType: 'rook' },
+      crossings: [{ fromBoard: board(7), toBoard: board(6), creditType: 'rook' }],
     };
     expect(applyMove(base, forged).ok).toBe(false);
   });
 
-  it('rejects a move that crosses two boundaries', () => {
+  it('rejects a multi-board slide when the mover lacks the required credits', () => {
+    // Crossing two boundaries is now legal geometry, but from the opening position
+    // no credits exist, so a queen slide entering boards 4 and 8 is still rejected
+    // (no-credit on the first entered board).
     const forged: Move = {
       kind: 'normal',
       from: sq(7, 7),
       to: sq(16, 16),
       piece: pc('queen', 'white', true),
       captured: null,
-      crossing: { fromBoard: board(0), toBoard: board(8), creditType: 'queen' },
+      crossings: [
+        { fromBoard: board(0), toBoard: board(4), creditType: 'queen' },
+        { fromBoard: board(0), toBoard: board(8), creditType: 'queen' },
+      ],
     };
     expect(applyMove(base, forged).ok).toBe(false);
   });
@@ -87,7 +130,7 @@ describe('forged illegal moves are rejected by the reducer', () => {
     const status = base.status.slice();
     status[0] = { kind: 'checkmate', loser: 'black', winner: 'white' };
     const s = stateOf({ plane, toMove: 'white', status });
-    const forged: Move = { kind: 'normal', from: sq(3, 3), to: sq(3, 4), piece: pc('rook', 'white', true), captured: null, crossing: null };
+    const forged: Move = { kind: 'normal', from: sq(3, 3), to: sq(3, 4), piece: pc('rook', 'white', true), captured: null, crossings: [] };
     const r = applyMove(s, forged);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.kind).toBe('frozen-board');

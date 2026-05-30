@@ -44,26 +44,48 @@ const pawnPromotes = (color: Color, fromBoard: BoardIndex, to: GlobalSquare): bo
   boardOf(to) !== fromBoard || to.gy === planeEdgeRank(color);
 
 /**
- * Resolve the boundary crossing (if any) for a non-king piece move, returning:
- *  - { ok:false } if the move crosses but is not permitted (king, or no credit)
- *  - { ok:true, crossing } otherwise (crossing is null for same-board moves)
+ * Boards ENTERED by a single jump/step from `from` to `to` (knights, kings, and
+ * pawn diagonals all move to a directly adjacent board at most): either empty
+ * (same board) or the single destination board.
  */
-const resolveCrossing = (
+const enteredFor = (from: GlobalSquare, to: GlobalSquare): ReadonlyArray<BoardIndex> => {
+  const toBoard = boardOf(to);
+  return boardOf(from) === toBoard ? [] : [toBoard];
+};
+
+/**
+ * Resolve the boundary crossings for a non-king piece move that enters the given
+ * ordered list of boards (each distinct from the origin board). Returns:
+ *  - { ok:false } if the move enters a board it may not (king; a frozen board; or
+ *    a board for which the mover holds no same-type credit).
+ *  - { ok:true, crossings } otherwise — one BoundaryCrossing per entered board
+ *    (empty list for a same-board move).
+ */
+const resolveCrossings = (
   state: GameState,
   color: Color,
   piece: Piece,
   from: GlobalSquare,
-  to: GlobalSquare,
-): { readonly ok: true; readonly crossing: BoundaryCrossing | null } | { readonly ok: false } => {
-  const fromBoard = boardOf(from);
-  const toBoard = boardOf(to);
-  if (fromBoard === toBoard) return { ok: true, crossing: null };
+  entered: ReadonlyArray<BoardIndex>,
+): { readonly ok: true; readonly crossings: ReadonlyArray<BoundaryCrossing> } | { readonly ok: false } => {
+  if (entered.length === 0) return { ok: true, crossings: [] };
   if (!isCrossingType(piece.type)) return { ok: false }; // kings never cross
-  if (!hasCredit(state.ledger, toBoard, color, piece.type)) return { ok: false };
-  return { ok: true, crossing: { fromBoard, toBoard, creditType: piece.type } };
+  const fromBoard = boardOf(from);
+  const crossings: BoundaryCrossing[] = [];
+  for (const toBoard of entered) {
+    if (isFrozenBoard(state, toBoard)) return { ok: false }; // may not enter a frozen board
+    if (!hasCredit(state.ledger, toBoard, color, piece.type)) return { ok: false };
+    crossings.push({ fromBoard, toBoard, creditType: piece.type });
+  }
+  return { ok: true, crossings };
 };
 
-/** Emit a normal/promotion move (and capture variants) for a slider/knight/king step. */
+/**
+ * Emit a normal/promotion move (and capture variants) for a slider/knight step.
+ * `entered` is the ordered list of boards the path enters (every board distinct
+ * from the origin, pass-through included); the move is gated on a credit per
+ * entered board and rejected if any entered board is frozen.
+ */
 const emitStep = (
   out: Move[],
   state: GameState,
@@ -71,13 +93,13 @@ const emitStep = (
   piece: Piece,
   from: GlobalSquare,
   to: GlobalSquare,
+  entered: ReadonlyArray<BoardIndex>,
   occupant: Piece | null,
 ): void => {
   if (occupant !== null && occupant.color === color) return; // cannot capture own
-  if (isFrozenBoard(state, boardOf(to))) return; // cannot enter a frozen board
-  const cross = resolveCrossing(state, color, piece, from, to);
+  const cross = resolveCrossings(state, color, piece, from, entered);
   if (!cross.ok) return;
-  out.push({ kind: 'normal', from, to, piece, captured: occupant, crossing: cross.crossing });
+  out.push({ kind: 'normal', from, to, piece, captured: occupant, crossings: cross.crossings });
 };
 
 const genSlider = (
@@ -89,7 +111,7 @@ const genSlider = (
   dirs: readonly (readonly [number, number])[],
 ): void => {
   for (const step of sliderSteps(state.plane, from, dirs)) {
-    emitStep(out, state, color, piece, from, step.square, step.occupant);
+    emitStep(out, state, color, piece, from, step.square, step.entered, step.occupant);
   }
 };
 
@@ -101,7 +123,8 @@ const genKnight = (
   from: GlobalSquare,
 ): void => {
   for (const t of knightTargets(from)) {
-    emitStep(out, state, color, piece, from, t.square, pieceAt(state.plane, t.square));
+    const entered = enteredFor(from, t.square);
+    emitStep(out, state, color, piece, from, t.square, entered, pieceAt(state.plane, t.square));
   }
 };
 
@@ -145,7 +168,7 @@ const genCastle = (
   const g = at(6);
   const hRook = at(7);
   if (cornerRook(hRook) && empty(f) && empty(g) && safe(f) && safe(g) && g !== null && hRook !== null && f !== null) {
-    out.push({ kind: 'castle', side: 'king', from, to: g, piece: king, captured: null, crossing: null, rookFrom: hRook, rookTo: f });
+    out.push({ kind: 'castle', side: 'king', from, to: g, piece: king, captured: null, crossings: [], rookFrom: hRook, rookTo: f });
   }
 
   // Queen-side: king e->c, rook a->d. Transit/land squares d(3), c(2); b(1) only needs to be empty.
@@ -154,7 +177,7 @@ const genCastle = (
   const b = at(1);
   const aRook = at(0);
   if (cornerRook(aRook) && empty(d) && empty(c) && empty(b) && safe(d) && safe(c) && c !== null && aRook !== null && d !== null) {
-    out.push({ kind: 'castle', side: 'queen', from, to: c, piece: king, captured: null, crossing: null, rookFrom: aRook, rookTo: d });
+    out.push({ kind: 'castle', side: 'queen', from, to: c, piece: king, captured: null, crossings: [], rookFrom: aRook, rookTo: d });
   }
 };
 
@@ -167,7 +190,7 @@ const genKing = (
 ): void => {
   for (const t of kingTargets(from)) {
     if (t.crossings !== 0) continue; // kings are board-bound
-    emitStep(out, state, color, piece, from, t.square, pieceAt(state.plane, t.square));
+    emitStep(out, state, color, piece, from, t.square, [], pieceAt(state.plane, t.square));
   }
   genCastle(out, state, color, piece, from);
 };
@@ -184,14 +207,14 @@ const emitPawnAdvance = (
   to: GlobalSquare,
   fromBoard: BoardIndex,
   captured: Piece | null,
-  crossing: BoundaryCrossing | null,
+  crossings: ReadonlyArray<BoundaryCrossing>,
 ): void => {
   if (pawnPromotes(color, fromBoard, to)) {
     for (const promoteTo of PROMOTIONS) {
-      out.push({ kind: 'promotion', from, to, piece, captured, crossing, promoteTo });
+      out.push({ kind: 'promotion', from, to, piece, captured, crossings, promoteTo });
     }
   } else {
-    out.push({ kind: 'normal', from, to, piece, captured, crossing });
+    out.push({ kind: 'normal', from, to, piece, captured, crossings });
   }
 };
 
@@ -208,36 +231,37 @@ const genPawn = (
   // Forward push. May cross a single seam (gated by a pawn credit for the entered
   // board); any seam crossing — or reaching the plane edge — promotes.
   const one = offset(from, 0, fdy);
-  if (one !== null && pieceAt(state.plane, one) === null && !isFrozenBoard(state, boardOf(one))) {
-    const cross = resolveCrossing(state, color, piece, from, one);
+  if (one !== null && pieceAt(state.plane, one) === null) {
+    const cross = resolveCrossings(state, color, piece, from, enteredFor(from, one));
     if (cross.ok) {
-      emitPawnAdvance(out, color, piece, from, one, fromBoard, null, cross.crossing);
+      emitPawnAdvance(out, color, piece, from, one, fromBoard, null, cross.crossings);
       // Double push stays within the home board (never crosses, never promotes).
       const two = offset(from, 0, 2 * fdy);
       if (
-        cross.crossing === null &&
+        cross.crossings.length === 0 &&
         !piece.hasMoved &&
         !pawnPromotes(color, fromBoard, one) &&
         two !== null &&
         boardOf(two) === fromBoard &&
         pieceAt(state.plane, two) === null
       ) {
-        out.push({ kind: 'double-pawn', from, to: two, piece, captured: null, crossing: null });
+        out.push({ kind: 'double-pawn', from, to: two, piece, captured: null, crossings: [] });
       }
     }
   }
 
   // Diagonal captures (may cross exactly one boundary, gated by a pawn credit).
+  // Pawn move-gen is unchanged in scope: a pawn diagonal reaches a directly
+  // adjacent board at most, so it enters either zero or one board.
   for (const dx of [-1, 1] as const) {
     const to = offset(from, dx, fdy);
     if (to === null) continue;
-    if (isFrozenBoard(state, boardOf(to))) continue;
-    const cross = resolveCrossing(state, color, piece, from, to);
+    const cross = resolveCrossings(state, color, piece, from, enteredFor(from, to));
     if (!cross.ok) continue;
 
     const occ = pieceAt(state.plane, to);
     if (occ !== null && occ.color !== color) {
-      emitPawnAdvance(out, color, piece, from, to, fromBoard, occ, cross.crossing);
+      emitPawnAdvance(out, color, piece, from, to, fromBoard, occ, cross.crossings);
       continue;
     }
 
@@ -253,7 +277,7 @@ const genPawn = (
             to,
             piece,
             captured: null,
-            crossing: cross.crossing,
+            crossings: cross.crossings,
             capturedSquare,
             capturedPawn,
           });

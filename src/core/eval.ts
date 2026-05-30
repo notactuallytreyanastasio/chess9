@@ -37,8 +37,8 @@ const crossingChecks = (plane: Plane, move: Move, color: Color): boolean => {
 const crossThreat = (state: GameState, color: Color, moves: readonly Move[]): number => {
   let bonus = 0;
   for (const move of moves) {
-    if (move.crossing === null) continue;
-    bonus += CROSS_OPTION;
+    if (move.crossings.length === 0) continue;
+    bonus += CROSS_OPTION * move.crossings.length;
     if (move.captured !== null) bonus += pieceValue(move.captured.type) / CROSS_CAPTURE_DIV;
     if (crossingChecks(state.plane, move, color)) bonus += CROSS_CHECK;
   }
