@@ -1,6 +1,7 @@
 import { isSquareAttacked } from './attack';
-import { GRID } from './constants';
-import { boardOf, mkGlobal, offset } from './coords';
+import { FIFTY_MOVE_PLIES, GRID } from './constants';
+import { boardOf, mkBoardIndex, mkGlobal, offset } from './coords';
+import { insufficientMaterial, isFrozenStatus } from './draws';
 import { debitCredit, grantCredit, hasCredit } from './ledger';
 import { isFrozenBoard, pseudoLegalMoves } from './moveGen';
 import { boardStatusAfter, kingSquare } from './check';
@@ -78,18 +79,55 @@ export const applyUnchecked = (state: GameState, move: Move): GameState => {
     ledger,
     toMove: opposite(state.toMove),
     status: state.status,
+    clocks: state.clocks,
     enPassant,
     ply: state.ply + 1,
   };
 };
 
-const recomputeTouched = (next: GameState, touched: ReadonlySet<BoardIndex>): GameState['status'] => {
+/** A move resets a board's 50-move clock if it is a pawn move or a capture. */
+const isProgress = (move: Move): boolean =>
+  move.piece.type === 'pawn' || move.captured !== null || move.kind === 'en-passant';
+
+const nextClocks = (
+  state: GameState,
+  move: Move,
+  touched: ReadonlySet<BoardIndex>,
+): ReadonlyArray<number> => {
+  const progress = isProgress(move);
+  return state.clocks.map((c, b) => {
+    const status = state.status[b];
+    if (status !== undefined && isFrozenStatus(status)) return c; // frozen boards stop counting
+    const bi = mkBoardIndexUnsafe(b);
+    return progress && touched.has(bi) ? 0 : c + 1;
+  });
+};
+
+const mkBoardIndexUnsafe = (n: number): BoardIndex => {
+  const r = mkBoardIndex(n);
+  if (!r.ok) throw new Error(`invalid board index ${n}`);
+  return r.value;
+};
+
+const recomputeStatus = (
+  next: GameState,
+  clocks: ReadonlyArray<number>,
+  touched: ReadonlySet<BoardIndex>,
+): GameState['status'] => {
   const status: BoardStatus[] = next.status.slice();
-  for (const b of touched) {
-    const cur = status[b];
-    if (cur === undefined) continue;
-    if (cur.kind === 'checkmate' || cur.kind === 'stalemate') continue; // frozen — never recompute
-    status[b] = boardStatusAfter(next, b);
+  for (let i = 0; i < status.length; i++) {
+    const cur = status[i];
+    if (cur === undefined || isFrozenStatus(cur)) continue; // frozen — never recompute
+    const b = mkBoardIndexUnsafe(i);
+    if ((clocks[i] ?? 0) >= FIFTY_MOVE_PLIES) {
+      status[i] = { kind: 'draw', reason: 'fifty-move' };
+      continue;
+    }
+    if (touched.has(b)) {
+      status[i] = insufficientMaterial(next.plane, b)
+        ? { kind: 'draw', reason: 'insufficient-material' }
+        : boardStatusAfter(next, b);
+    }
   }
   return status;
 };
@@ -178,5 +216,8 @@ export const applyMove = (state: GameState, move: Move): Result<GameState, MoveE
   if (canonical === undefined) return err({ kind: 'not-in-legal-set' });
 
   const applied = applyUnchecked(state, canonical);
-  return ok({ ...applied, status: recomputeTouched(applied, touchedBoards(canonical)) });
+  const touched = touchedBoards(canonical);
+  const clocks = nextClocks(state, canonical, touched);
+  const status = recomputeStatus({ ...applied, clocks }, clocks, touched);
+  return ok({ ...applied, clocks, status });
 };

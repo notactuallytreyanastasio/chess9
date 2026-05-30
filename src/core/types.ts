@@ -51,11 +51,14 @@ export type BoardCredits = Readonly<Record<Color, CreditCounts>>;
 export type Ledger = ReadonlyArray<BoardCredits>; // length 9, indexed by BoardIndex
 
 // ---- Per-board lifecycle status ----
+export type DrawReason = 'fifty-move' | 'insufficient-material';
+
 export type BoardStatus =
   | { readonly kind: 'active' }
   | { readonly kind: 'check'; readonly inCheck: Color } // transient; not frozen
   | { readonly kind: 'checkmate'; readonly loser: Color; readonly winner: Color } // frozen + scored
-  | { readonly kind: 'stalemate' }; // frozen, unscored
+  | { readonly kind: 'stalemate' } // frozen, unscored
+  | { readonly kind: 'draw'; readonly reason: DrawReason }; // frozen, unscored
 export type BoardStatuses = ReadonlyArray<BoardStatus>; // length 9
 
 // ---- Moves (discriminated union; geometry lives in global space) ----
@@ -98,6 +101,7 @@ export interface GameState {
   readonly toMove: Color;
   readonly ledger: Ledger; // length 9
   readonly status: BoardStatuses; // length 9
+  readonly clocks: ReadonlyArray<number>; // length 9 — per-board halfmoves since last pawn move/capture
   readonly enPassant: GlobalSquare | null; // valid for the current ply only
   readonly ply: number; // half-move counter (also turn parity)
 }

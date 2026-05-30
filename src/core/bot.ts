@@ -1,5 +1,6 @@
 import { boardOf } from './coords';
 import { inCheck } from './check';
+import { isFrozenStatus } from './draws';
 import { evaluate } from './eval';
 import { legalMoves, movesLandingOn } from './legal';
 import { opposite, pieceValue } from './pieces';
@@ -27,7 +28,7 @@ const searchApply = (state: GameState, move: Move): GameState => {
   const defender = applied.toMove;
   for (const b of touched) {
     const cur = status[b];
-    if (cur === undefined || cur.kind === 'checkmate' || cur.kind === 'stalemate') continue;
+    if (cur === undefined || isFrozenStatus(cur)) continue;
     if (!inCheck(applied, b, defender)) {
       status[b] = { kind: 'active' };
     } else if (movesLandingOn(applied, b).length === 0) {
