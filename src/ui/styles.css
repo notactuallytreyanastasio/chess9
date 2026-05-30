@@ -194,11 +194,82 @@ body {
 }
 
 .board-group {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   aspect-ratio: 1;
   border-radius: 4px;
   overflow: hidden;
+}
+
+/* King under attack: red pulsing ring so "your king is in danger" is obvious. */
+.sq.king-check::after {
+  content: "";
+  position: absolute;
+  inset: 6%;
+  border-radius: 50%;
+  box-shadow: 0 0 0 max(2px, 0.5vmin) var(--capture);
+  animation: kingpulse 0.9s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes kingpulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+/* "This board's game is over" overlay. */
+.board-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(1px);
+  background: rgba(8, 10, 14, 0.55);
+}
+.board-overlay.mate-win {
+  background: rgba(20, 60, 30, 0.55);
+}
+.board-overlay.mate-loss {
+  background: rgba(70, 18, 18, 0.6);
+}
+.overlay-symbol {
+  font-size: min(7vw, 7vmin);
+  line-height: 1;
+}
+.board-overlay.mate-win .overlay-symbol {
+  color: var(--target);
+}
+.board-overlay.mate-loss .overlay-symbol {
+  color: var(--capture);
+}
+.overlay-label {
+  font-weight: 800;
+  font-size: min(2.6vw, 2.6vmin);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.overlay-sub {
+  font-size: min(1.9vw, 1.9vmin);
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sq.king-check::after {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 .sq {

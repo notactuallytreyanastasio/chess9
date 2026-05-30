@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
-import { initialState, legalMoves, mkGlobal, type GlobalSquare } from '../core/index';
+import { initialState, legalMoves, mkGlobal, type BoardStatus, type GlobalSquare } from '../core/index';
+import { pc, planeOf, sq as coreSq, stateOf } from '../core/testkit';
 import { render, type Handlers, type ViewModel } from './render';
 
 const sq = (gx: number, gy: number): GlobalSquare => {
@@ -84,6 +85,19 @@ describe('render', () => {
     expect(zoomOut).not.toBeNull();
     (zoomOut as HTMLButtonElement).click();
     expect(handlers.onDismissFocus).toHaveBeenCalledOnce();
+  });
+
+  it('shows a checkmate overlay and flags a king that is in check', () => {
+    const status: BoardStatus[] = Array.from({ length: 9 }, () => ({ kind: 'active' }));
+    status[0] = { kind: 'checkmate', loser: 'black', winner: 'white' };
+    status[4] = { kind: 'check', inCheck: 'white' };
+    const plane = planeOf([[coreSq(12, 12), pc('king', 'white')]]); // a white king on board 4
+    const root = document.createElement('div');
+    render(root, stateOf({ plane, status }), emptyVm, noopHandlers());
+
+    expect(root.querySelector('.board-overlay.mate-win')).not.toBeNull();
+    expect(root.querySelector('.board-overlay .overlay-label')?.textContent).toBe('Checkmate');
+    expect(root.querySelector('.sq.king-check')).not.toBeNull();
   });
 
   it('shows the promotion picker when a promotion is pending', () => {

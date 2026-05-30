@@ -96,7 +96,9 @@ const emitStep = (
   entered: ReadonlyArray<BoardIndex>,
   occupant: Piece | null,
 ): void => {
-  if (occupant !== null && occupant.color === color) return; // cannot capture own
+  // Cannot capture your own piece, and a king is never capturable (checkmate ends
+  // a board before its king could be taken — keeps every active board's king present).
+  if (occupant !== null && (occupant.color === color || occupant.type === 'king')) return;
   const cross = resolveCrossings(state, color, piece, from, entered);
   if (!cross.ok) return;
   out.push({ kind: 'normal', from, to, piece, captured: occupant, crossings: cross.crossings });
@@ -260,7 +262,7 @@ const genPawn = (
     if (!cross.ok) continue;
 
     const occ = pieceAt(state.plane, to);
-    if (occ !== null && occ.color !== color) {
+    if (occ !== null && occ.color !== color && occ.type !== 'king') {
       emitPawnAdvance(out, color, piece, from, to, fromBoard, occ, cross.crossings);
       continue;
     }
