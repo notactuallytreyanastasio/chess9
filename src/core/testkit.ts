@@ -27,6 +27,7 @@ interface StateOverrides {
   readonly ply?: number;
   readonly status?: GameState['status'];
   readonly ledger?: GameState['ledger'];
+  readonly clocks?: ReadonlyArray<number>;
 }
 
 export const stateOf = (o: StateOverrides): GameState => ({
@@ -34,6 +35,7 @@ export const stateOf = (o: StateOverrides): GameState => ({
   toMove: o.toMove ?? 'white',
   ledger: o.ledger ?? emptyLedger(),
   status: o.status ?? Array.from({ length: BOARDS }, (): BoardStatus => ({ kind: 'active' })),
+  clocks: o.clocks ?? Array.from({ length: BOARDS }, () => 0),
   enPassant: o.enPassant ?? null,
   ply: o.ply ?? 0,
 });

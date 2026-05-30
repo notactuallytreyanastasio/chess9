@@ -46,6 +46,7 @@ const STATUS_SYMBOL: Readonly<Record<BoardStatus['kind'], string>> = {
   check: '+',
   checkmate: '#',
   stalemate: '=',
+  draw: '½',
 };
 
 const renderBoardMap = (state: GameState): HTMLElement => {
@@ -54,7 +55,7 @@ const renderBoardMap = (state: GameState): HTMLElement => {
     const cell = el('div', 'board-map-cell');
     if (s.kind === 'checkmate') {
       cell.classList.add(s.winner === 'white' ? 'won-white' : 'won-black');
-    } else if (s.kind === 'stalemate') {
+    } else if (s.kind === 'stalemate' || s.kind === 'draw') {
       cell.classList.add('drawn');
     } else if (s.kind === 'check') {
       cell.classList.add('in-check');

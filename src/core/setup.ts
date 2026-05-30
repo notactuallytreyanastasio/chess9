@@ -51,6 +51,7 @@ export const initialState = (): GameState => ({
   toMove: 'white',
   ledger: emptyLedger(),
   status: Array.from({ length: BOARDS }, (): BoardStatus => ({ kind: 'active' })),
+  clocks: Array.from({ length: BOARDS }, () => 0),
   enPassant: null,
   ply: 0,
 });

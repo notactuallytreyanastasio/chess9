@@ -1,4 +1,5 @@
 import { isSquareAttacked } from './attack';
+import { isFrozenStatus } from './draws';
 import { allCells, boardOf, boardOrigin, offset, squareAt, toBoardSquare } from './coords';
 import { hasCredit } from './ledger';
 import { pieceAt } from './plane';
@@ -26,7 +27,7 @@ const PROMOTIONS: readonly PromotionType[] = ['queen', 'rook', 'bishop', 'knight
 
 export const isFrozenBoard = (state: GameState, board: BoardIndex): boolean => {
   const s = state.status[board];
-  return s !== undefined && (s.kind === 'checkmate' || s.kind === 'stalemate');
+  return s !== undefined && isFrozenStatus(s);
 };
 
 const isPromotionSquare = (color: Color, to: GlobalSquare): boolean =>
