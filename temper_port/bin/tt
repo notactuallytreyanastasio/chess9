@@ -1,0 +1,4 @@
+#!/bin/sh
+# Run temper inside the chess9 project with a valid JDK 21 (no cd needed by callers).
+cd /Users/robertgrayson/code/chess/temper_port/chess9 || exit 1
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 exec /Users/robertgrayson/code/temper/cli/build/install/temper/bin/temper "$@"

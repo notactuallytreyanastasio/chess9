@@ -1,0 +1,3 @@
+#!/bin/sh
+# Project wrapper: pin a valid JDK 21 (env JAVA_HOME points at an uninstalled asdf JDK).
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 exec /Users/robertgrayson/code/temper/cli/build/install/temper/bin/temper "$@"
