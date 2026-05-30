@@ -2,7 +2,7 @@
 export { initialState } from './setup';
 export { legalMoves, movesLandingOn, movesTouching, findLegalMove } from './legal';
 export { applyMove, movesMatch } from './reducer';
-export { inCheck, isCheckmate, isStalemate, kingSquare } from './check';
+export { inCheck, isCheckmate, kingSquare } from './check';
 export { boardsWon, gameOver, winner } from './scoring';
 export { chooseMove, DEFAULT_DEPTH } from './bot';
 export { evaluate, MATE_SCORE } from './eval';
