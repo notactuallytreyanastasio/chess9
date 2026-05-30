@@ -132,6 +132,7 @@ const renderBoard = (state: GameState, vm: ViewModel, handlers: Handlers): HTMLE
         const idx = cellIndex(sq);
         const cell = el('button', (sq.gx + sq.gy) % 2 === 0 ? 'sq light' : 'sq dark');
         cell.type = 'button';
+        cell.dataset.sq = `${sq.gx}-${sq.gy}`; // stable hook for e2e (gx-gy)
 
         if (isFrozenBoard(state, boardOf(sq))) cell.classList.add('frozen');
         if (idx === selectedIdx) cell.classList.add('selected');

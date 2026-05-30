@@ -1,4 +1,7 @@
 node_modules
 dist
+dist-temper
 .DS_Store
 coverage
+test-results
+playwright-report
