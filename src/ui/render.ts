@@ -22,12 +22,17 @@ export interface ViewModel {
   readonly lastMove: Move | null;
   readonly pendingPromotion: { readonly from: GlobalSquare; readonly to: GlobalSquare } | null;
   readonly thinking: boolean;
+  /** The bot's most recent move — gets a pulsing ring (and a mobile zoom when focused). */
+  readonly botMove: Move | null;
+  /** Whether to pan-and-zoom to the bot move (mobile). */
+  readonly focused: boolean;
 }
 
 export interface Handlers {
   readonly onCell: (sq: GlobalSquare) => void;
   readonly onPromote: (choice: PromotionType | null) => void;
   readonly onReset: () => void;
+  readonly onDismissFocus: () => void;
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(
@@ -102,6 +107,8 @@ const renderHeader = (state: GameState, vm: ViewModel, handlers: Handlers): HTML
 };
 
 const GRID_SIDE = 3;
+const PLANE_SPAN = GRID_SIDE * BOARD_SIZE; // 24
+const FOCUS_ZOOM = 2.4;
 
 const renderBoard = (state: GameState, vm: ViewModel, handlers: Handlers): HTMLElement => {
   const board = el('div', 'board');
@@ -109,6 +116,8 @@ const renderBoard = (state: GameState, vm: ViewModel, handlers: Handlers): HTMLE
   const selectedIdx = vm.selected !== null ? cellIndex(vm.selected) : -1;
   const lastFrom = vm.lastMove !== null ? cellIndex(vm.lastMove.from) : -1;
   const lastTo = vm.lastMove !== null ? cellIndex(vm.lastMove.to) : -1;
+  const botFrom = vm.botMove !== null ? cellIndex(vm.botMove.from) : -1;
+  const botTo = vm.botMove !== null ? cellIndex(vm.botMove.to) : -1;
 
   for (let b = 0; b < GRID_SIDE * GRID_SIDE; b++) {
     const bx = b % GRID_SIDE;
@@ -127,6 +136,8 @@ const renderBoard = (state: GameState, vm: ViewModel, handlers: Handlers): HTMLE
         if (isFrozenBoard(state, boardOf(sq))) cell.classList.add('frozen');
         if (idx === selectedIdx) cell.classList.add('selected');
         if (idx === lastFrom || idx === lastTo) cell.classList.add('lastmove');
+        if (idx === botFrom) cell.classList.add('bot-from');
+        if (idx === botTo) cell.classList.add('bot-to');
 
         const piece = pieceAt(state.plane, sq);
         if (piece !== null) {
@@ -168,6 +179,27 @@ const renderPromotion = (handlers: Handlers): HTMLElement => {
   return overlay;
 };
 
+const renderViewport = (state: GameState, vm: ViewModel, handlers: Handlers): HTMLElement => {
+  const viewport = el('div', 'board-viewport');
+  const board = renderBoard(state, vm, handlers);
+
+  if (vm.focused && vm.botMove !== null) {
+    viewport.classList.add('is-focused');
+    const fx = (vm.botMove.to.gx + 0.5) / PLANE_SPAN;
+    const fy = (vm.botMove.to.gy + 0.5) / PLANE_SPAN;
+    board.style.setProperty('--fx', String(fx));
+    board.style.setProperty('--fy', String(fy));
+    board.style.setProperty('--z', String(FOCUS_ZOOM));
+
+    const zoomOut = el('button', 'zoom-out', 'Zoom out ⤢');
+    zoomOut.addEventListener('click', () => handlers.onDismissFocus());
+    viewport.appendChild(zoomOut);
+  }
+
+  viewport.appendChild(board);
+  return viewport;
+};
+
 export const render = (
   root: HTMLElement,
   state: GameState,
@@ -177,7 +209,7 @@ export const render = (
   root.replaceChildren();
   const app = el('div', 'app');
   app.appendChild(renderHeader(state, vm, handlers));
-  app.appendChild(renderBoard(state, vm, handlers));
+  app.appendChild(renderViewport(state, vm, handlers));
   root.appendChild(app);
   if (vm.pendingPromotion !== null) root.appendChild(renderPromotion(handlers));
 };

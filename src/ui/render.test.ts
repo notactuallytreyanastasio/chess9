@@ -15,12 +15,24 @@ const emptyVm: ViewModel = {
   lastMove: null,
   pendingPromotion: null,
   thinking: false,
+  botMove: null,
+  focused: false,
 };
 
 const noopHandlers = (): Handlers => ({
   onCell: vi.fn(),
   onPromote: vi.fn(),
   onReset: vi.fn(),
+  onDismissFocus: vi.fn(),
+});
+
+const botMoveTo = (from: GlobalSquare, to: GlobalSquare): NonNullable<ViewModel['botMove']> => ({
+  kind: 'normal',
+  from,
+  to,
+  piece: { type: 'rook', color: 'black', hasMoved: true },
+  captured: null,
+  crossing: null,
 });
 
 describe('render', () => {
@@ -53,6 +65,25 @@ describe('render', () => {
     render(root, state, { ...emptyVm, selected: from, targets }, noopHandlers());
     expect(root.querySelectorAll('.move-target').length).toBe(targets.length);
     expect(root.querySelector('.selected')).not.toBeNull();
+  });
+
+  it('rings the bot move and, when focused, zooms the board with a dismiss button', () => {
+    const root = document.createElement('div');
+    const handlers = noopHandlers();
+    const bm = botMoveTo(sq(10, 10), sq(12, 12));
+    render(root, initialState(), { ...emptyVm, botMove: bm, lastMove: bm, focused: true }, handlers);
+
+    expect(root.querySelector('.sq.bot-to')).not.toBeNull();
+    const viewport = root.querySelector('.board-viewport');
+    expect(viewport?.classList.contains('is-focused')).toBe(true);
+
+    const board = root.querySelector('.board');
+    expect((board as HTMLElement | null)?.style.getPropertyValue('--z')).not.toBe('');
+
+    const zoomOut = root.querySelector('.zoom-out');
+    expect(zoomOut).not.toBeNull();
+    (zoomOut as HTMLButtonElement).click();
+    expect(handlers.onDismissFocus).toHaveBeenCalledOnce();
   });
 
   it('shows the promotion picker when a promotion is pending', () => {
