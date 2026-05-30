@@ -1,6 +1,7 @@
 import { isSquareAttacked } from './attack';
+import { PLANE } from './constants';
 import { isFrozenStatus } from './draws';
-import { allCells, boardOf, boardOrigin, offset, squareAt, toBoardSquare } from './coords';
+import { allCells, boardOf, boardOrigin, offset, squareAt } from './coords';
 import { hasCredit } from './ledger';
 import { pieceAt } from './plane';
 import { forwardDir, isCrossingType, opposite } from './pieces';
@@ -30,8 +31,17 @@ export const isFrozenBoard = (state: GameState, board: BoardIndex): boolean => {
   return s !== undefined && isFrozenStatus(s);
 };
 
-const isPromotionSquare = (color: Color, to: GlobalSquare): boolean =>
-  toBoardSquare(to).rank === (color === 'white' ? 0 : 7);
+/** The plane's outer-edge rank a pawn of `color` promotes on (white gy=0, black gy=23). */
+const planeEdgeRank = (color: Color): number => (color === 'white' ? 0 : PLANE - 1);
+
+/**
+ * A pawn move promotes when it lands on a DIFFERENT board than it left (crossing
+ * a seam — straight push or diagonal capture) OR when it reaches the plane's
+ * outer-edge rank without crossing (standard terminal). Within-board moves that
+ * reach neither do not promote.
+ */
+const pawnPromotes = (color: Color, fromBoard: BoardIndex, to: GlobalSquare): boolean =>
+  boardOf(to) !== fromBoard || to.gy === planeEdgeRank(color);
 
 /**
  * Resolve the boundary crossing (if any) for a non-king piece move, returning:
@@ -162,6 +172,29 @@ const genKing = (
   genCastle(out, state, color, piece, from);
 };
 
+/**
+ * Emit a forward push or diagonal capture, promoting (Q/R/B/N variants) when the
+ * destination crosses a seam or reaches the plane's outer edge, else a normal move.
+ */
+const emitPawnAdvance = (
+  out: Move[],
+  color: Color,
+  piece: Piece,
+  from: GlobalSquare,
+  to: GlobalSquare,
+  fromBoard: BoardIndex,
+  captured: Piece | null,
+  crossing: BoundaryCrossing | null,
+): void => {
+  if (pawnPromotes(color, fromBoard, to)) {
+    for (const promoteTo of PROMOTIONS) {
+      out.push({ kind: 'promotion', from, to, piece, captured, crossing, promoteTo });
+    }
+  } else {
+    out.push({ kind: 'normal', from, to, piece, captured, crossing });
+  }
+};
+
 const genPawn = (
   out: Move[],
   state: GameState,
@@ -172,26 +205,24 @@ const genPawn = (
   const fdy = forwardDir(color);
   const fromBoard = boardOf(from);
 
-  // Forward push (never crosses a boundary).
+  // Forward push. May cross a single seam (gated by a pawn credit for the entered
+  // board); any seam crossing — or reaching the plane edge — promotes.
   const one = offset(from, 0, fdy);
-  if (one !== null && boardOf(one) === fromBoard && pieceAt(state.plane, one) === null) {
-    if (!isFrozenBoard(state, fromBoard)) {
-      if (isPromotionSquare(color, one)) {
-        for (const promoteTo of PROMOTIONS) {
-          out.push({ kind: 'promotion', from, to: one, piece, captured: null, crossing: null, promoteTo });
-        }
-      } else {
-        out.push({ kind: 'normal', from, to: one, piece, captured: null, crossing: null });
-        // Double push from the home rank.
-        const two = offset(from, 0, 2 * fdy);
-        if (
-          !piece.hasMoved &&
-          two !== null &&
-          boardOf(two) === fromBoard &&
-          pieceAt(state.plane, two) === null
-        ) {
-          out.push({ kind: 'double-pawn', from, to: two, piece, captured: null, crossing: null });
-        }
+  if (one !== null && pieceAt(state.plane, one) === null && !isFrozenBoard(state, boardOf(one))) {
+    const cross = resolveCrossing(state, color, piece, from, one);
+    if (cross.ok) {
+      emitPawnAdvance(out, color, piece, from, one, fromBoard, null, cross.crossing);
+      // Double push stays within the home board (never crosses, never promotes).
+      const two = offset(from, 0, 2 * fdy);
+      if (
+        cross.crossing === null &&
+        !piece.hasMoved &&
+        !pawnPromotes(color, fromBoard, one) &&
+        two !== null &&
+        boardOf(two) === fromBoard &&
+        pieceAt(state.plane, two) === null
+      ) {
+        out.push({ kind: 'double-pawn', from, to: two, piece, captured: null, crossing: null });
       }
     }
   }
@@ -206,13 +237,7 @@ const genPawn = (
 
     const occ = pieceAt(state.plane, to);
     if (occ !== null && occ.color !== color) {
-      if (isPromotionSquare(color, to)) {
-        for (const promoteTo of PROMOTIONS) {
-          out.push({ kind: 'promotion', from, to, piece, captured: occ, crossing: cross.crossing, promoteTo });
-        }
-      } else {
-        out.push({ kind: 'normal', from, to, piece, captured: occ, crossing: cross.crossing });
-      }
+      emitPawnAdvance(out, color, piece, from, to, fromBoard, occ, cross.crossing);
       continue;
     }
 

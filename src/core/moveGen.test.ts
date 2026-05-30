@@ -39,34 +39,60 @@ describe('boundary crossing gating', () => {
 });
 
 describe('pawn rules', () => {
-  it('a pawn never pushes across a board seam', () => {
-    // White pawn on board 4 top edge; a forward push would cross into board 1.
+  it('does NOT push straight across a seam without a pawn credit', () => {
+    // White pawn at (8,8) on board 4; a forward push (gy 8 -> 7) crosses into board 1.
     const plane = planeOf([[sq(8, 8), pc('pawn', 'white')]]);
     const moves = pseudoLegalMoves(stateOf({ plane }), 'white');
-    expect(moves).toHaveLength(0); // push blocked (crosses), captures need credit
+    expect(moves).toHaveLength(0); // no credit: push not generated, no captures either
   });
 
-  it('a pawn DOES capture diagonally across a seam with a pawn credit', () => {
+  it('pushes straight across a seam with a pawn credit and ALWAYS promotes on the entered board', () => {
+    // White pawn at (8,8) on board 4; forward push lands on board 1 at (8,7).
+    const plane = planeOf([[sq(8, 8), pc('pawn', 'white')]]);
+    const ledger = grantCredit(emptyLedger(), board(1), 'white', 'pawn');
+    const moves = pseudoLegalMoves(stateOf({ plane, ledger }), 'white');
+    const push = moves.filter((m) => m.to.gx === 8 && m.to.gy === 7);
+    expect(push).toHaveLength(4); // four promotion variants
+    expect(push.every((m) => m.kind === 'promotion')).toBe(true);
+    expect(push.every((m) => m.crossing?.toBoard === 0)).toBe(false); // crosses into board 1
+    expect(push.every((m) => m.crossing?.toBoard === 1)).toBe(true);
+    expect(push.every((m) => m.captured === null)).toBe(true);
+    expect(new Set(push.map((m) => (m.kind === 'promotion' ? m.promoteTo : '')))).toEqual(
+      new Set(['queen', 'rook', 'bishop', 'knight']),
+    );
+  });
+
+  it('a diagonal cross-capture ALWAYS promotes', () => {
+    // White pawn at (8,8) capturing diagonally to (7,7) on board 0.
     const plane = planeOf([
       [sq(8, 8), pc('pawn', 'white')],
       [sq(7, 7), pc('rook', 'black')],
     ]);
     const ledger = grantCredit(emptyLedger(), board(0), 'white', 'pawn');
     const moves = pseudoLegalMoves(stateOf({ plane, ledger }), 'white');
-    const capture = moves.find((m) => m.to.gx === 7 && m.to.gy === 7);
-    expect(capture).toBeDefined();
-    expect(capture?.crossing?.toBoard).toBe(0);
-    expect(capture?.captured?.type).toBe('rook');
+    const cap = moves.filter((m) => m.to.gx === 7 && m.to.gy === 7);
+    expect(cap).toHaveLength(4); // four promotion variants
+    expect(cap.every((m) => m.kind === 'promotion')).toBe(true);
+    expect(cap.every((m) => m.crossing?.toBoard === 0)).toBe(true);
+    expect(cap.every((m) => m.captured?.type === 'rook')).toBe(true);
   });
 
-  it('emits four promotion moves on reaching the last rank', () => {
-    const plane = planeOf([[sq(4, 1), pc('pawn', 'white', false)]]);
+  it('promotes on a straight push to the plane outer edge (no seam crossed)', () => {
+    // White pawn at (4,1) on board 0; push to gy=0 stays on board 0 but reaches the plane edge.
+    const plane = planeOf([[sq(4, 1), pc('pawn', 'white')]]);
     const moves = pseudoLegalMoves(stateOf({ plane }), 'white');
-    const promos = moves.filter((m) => m.kind === 'promotion');
-    expect(promos).toHaveLength(4);
-    expect(new Set(promos.map((m) => (m.kind === 'promotion' ? m.promoteTo : '')))).toEqual(
-      new Set(['queen', 'rook', 'bishop', 'knight']),
-    );
+    const push = moves.filter((m) => m.to.gx === 4 && m.to.gy === 0);
+    expect(push).toHaveLength(4);
+    expect(push.every((m) => m.kind === 'promotion' && m.crossing === null)).toBe(true);
+  });
+
+  it('a within-board push that crosses no seam and is not at the plane edge does NOT promote', () => {
+    // White pawn at (4,2) on board 0; push to (4,1) is interior — a plain move.
+    const plane = planeOf([[sq(4, 2), pc('pawn', 'white')]]);
+    const moves = pseudoLegalMoves(stateOf({ plane }), 'white');
+    const push = moves.filter((m) => m.to.gx === 4 && m.to.gy === 1);
+    expect(push).toHaveLength(1);
+    expect(push[0]?.kind).toBe('normal');
   });
 
   it('offers a double-step from the home rank', () => {
