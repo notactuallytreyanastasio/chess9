@@ -1,6 +1,6 @@
 import { boardOf, offset } from './coords';
 import { pieceAt } from './plane';
-import type { GlobalSquare, Piece, Plane } from './types';
+import type { BoardIndex, GlobalSquare, Piece, Plane } from './types';
 
 export type Vec = readonly [number, number];
 
@@ -33,10 +33,14 @@ const KNIGHT_DELTAS: readonly Vec[] = [
 ];
 const KING_DELTAS: readonly Vec[] = [...DIAGONALS, ...ORTHOGONALS];
 
-/** One reachable square along a ray, with how many board boundaries were crossed to get there. */
+/**
+ * One reachable square along a ray, with the ORDERED list of boards ENTERED to
+ * reach it (each board on the path different from the ray's origin board, in the
+ * order first stepped onto). Empty while the ray is still on its origin board.
+ */
 export interface RayStep {
   readonly square: GlobalSquare;
-  readonly crossings: number; // 0 or 1; a step that would make it 2 halts the ray instead
+  readonly entered: ReadonlyArray<BoardIndex>;
   readonly occupant: Piece | null;
 }
 
@@ -47,29 +51,33 @@ export interface JumpTarget {
 }
 
 /**
- * Walk a sliding ray from `from` in direction `dir`. Crossings are counted by
- * board-index CHANGE per step (a corner diagonal that leaves board A onto board
- * B is one crossing). The ray halts at: the plane wall, the first occupied
- * square (included as a potential capture), or the step that would be the 2nd
- * board change (excluded — only single-boundary moves are legal).
+ * Walk a sliding ray from `from` in direction `dir`. A board boundary is crossed
+ * whenever a step lands on a board index different from the previous square's
+ * (a corner diagonal that leaves board A onto board B is one crossing). The ray
+ * may cross AS MANY boundaries as the path allows: it halts only at the plane
+ * wall or at the first occupied square (included as a potential capture). Each
+ * reachable square carries the ordered list of boards entered so far (every
+ * board distinct from the origin board, first-seen order).
  */
 export const traceSlider = (plane: Plane, from: GlobalSquare, dir: Vec): readonly RayStep[] => {
   const [dx, dy] = dir;
   const steps: RayStep[] = [];
-  let prevBoard = boardOf(from);
-  let crossings = 0;
+  const originBoard = boardOf(from);
+  let prevBoard = originBoard;
+  let entered: ReadonlyArray<BoardIndex> = [];
   let cur = from;
   for (;;) {
     const next = offset(cur, dx, dy);
     if (next === null) break; // outer plane wall
     const nb = boardOf(next);
-    if (nb !== prevBoard) {
-      crossings += 1;
-      if (crossings >= 2) break; // a single move may cross at most one boundary
+    if (nb !== prevBoard && nb !== originBoard) {
+      // Stepped onto a board we have not yet recorded for this ray. Because a
+      // straight slide visits each board contiguously, nb is necessarily new.
+      entered = [...entered, nb];
     }
     prevBoard = nb;
     const occupant = pieceAt(plane, next);
-    steps.push({ square: next, crossings, occupant });
+    steps.push({ square: next, entered, occupant });
     if (occupant !== null) break; // capture candidate or blocker — ray stops here
     cur = next;
   }

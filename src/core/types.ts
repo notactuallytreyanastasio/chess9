@@ -62,8 +62,11 @@ export type BoardStatus =
 export type BoardStatuses = ReadonlyArray<BoardStatus>; // length 9
 
 // ---- Moves (discriminated union; geometry lives in global space) ----
+// A move may now traverse MANY board boundaries in one unobstructed slide. Each
+// board ENTERED (any board on the path different from the origin board) is one
+// BoundaryCrossing: it gates the move on a same-type credit and is debited.
 export interface BoundaryCrossing {
-  readonly fromBoard: BoardIndex;
+  readonly fromBoard: BoardIndex; // the move's ORIGIN board (constant across the list)
   readonly toBoard: BoardIndex; // board ENTERED; ledger[toBoard] is debited
   readonly creditType: CrossingType; // === piece.type
 }
@@ -73,14 +76,16 @@ interface MoveBase {
   readonly to: GlobalSquare;
   readonly piece: Piece; // piece standing at `from`
   readonly captured: Piece | null; // piece removed at `to` (null for en-passant)
-  readonly crossing: BoundaryCrossing | null; // non-null iff exactly one boundary is crossed
+  // Ordered list of boards ENTERED along the move's path (empty for same-board
+  // moves). One entry per distinct board crossed into; each is gated + debited.
+  readonly crossings: ReadonlyArray<BoundaryCrossing>;
 }
 
 export type CastleSide = 'king' | 'queen';
 
 export type Move =
   | (MoveBase & { readonly kind: 'normal' })
-  | (MoveBase & { readonly kind: 'double-pawn'; readonly crossing: null })
+  | (MoveBase & { readonly kind: 'double-pawn'; readonly crossings: readonly [] })
   | (MoveBase & {
       readonly kind: 'en-passant';
       readonly capturedSquare: GlobalSquare;
@@ -92,7 +97,7 @@ export type Move =
       readonly side: CastleSide;
       readonly rookFrom: GlobalSquare;
       readonly rookTo: GlobalSquare;
-      readonly crossing: null; // castling is always within a single board
+      readonly crossings: readonly []; // castling is always within a single board
     });
 
 // ---- Immutable game state ----
@@ -114,7 +119,11 @@ export type MoveError =
   | { readonly kind: 'frozen-board'; readonly board: BoardIndex }
   | { readonly kind: 'illegal-geometry' }
   | { readonly kind: 'path-blocked' }
-  | { readonly kind: 'two-boundaries' }
+  // 'two-boundaries' removed: multi-board slides are now legal, so crossing more
+  // than one boundary is no longer an error condition. A move that enters a board
+  // for which the mover lacks a credit now surfaces as 'no-credit' (reporting the
+  // FIRST such entered board), and entering a frozen board surfaces as
+  // 'frozen-board'.
   | { readonly kind: 'no-credit'; readonly crossing: BoundaryCrossing }
   | { readonly kind: 'king-cannot-cross' }
   | { readonly kind: 'leaves-king-in-check'; readonly board: BoardIndex }

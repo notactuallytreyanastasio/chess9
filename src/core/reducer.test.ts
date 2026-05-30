@@ -36,10 +36,10 @@ describe('applyMove basic legality', () => {
   it('rejects moving out of turn and from an empty square', () => {
     const s = initialState();
     const blackPiece = pc('pawn', 'black');
-    const forged: Move = { kind: 'normal', from: sq(4, 1), to: sq(4, 2), piece: blackPiece, captured: null, crossing: null };
+    const forged: Move = { kind: 'normal', from: sq(4, 1), to: sq(4, 2), piece: blackPiece, captured: null, crossings: [] };
     expect(applyMove(s, forged)).toEqual({ ok: false, error: { kind: 'not-your-turn' } });
 
-    const empty: Move = { kind: 'normal', from: sq(4, 4), to: sq(4, 3), piece: pc('pawn', 'white'), captured: null, crossing: null };
+    const empty: Move = { kind: 'normal', from: sq(4, 4), to: sq(4, 3), piece: pc('pawn', 'white'), captured: null, crossings: [] };
     expect(applyMove(s, empty)).toEqual({ ok: false, error: { kind: 'empty-source' } });
   });
 });
@@ -71,7 +71,7 @@ describe('capture-credit ledger', () => {
     expect(creditCount(s.ledger, board(4), 'white', 'bishop')).toBe(1);
 
     const move = need(findLegalMove(s, sq(7, 7), sq(8, 8)));
-    expect(move.crossing?.toBoard).toBe(4);
+    expect(move.crossings.map((c) => c.toBoard)).toEqual([4]);
     const r = applyMove(s, move);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
