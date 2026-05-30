@@ -32,6 +32,8 @@ let targets: ReadonlyArray<GlobalSquare> = [];
 let lastMove: Move | null = null;
 let pendingPromotion: { readonly from: GlobalSquare; readonly to: GlobalSquare } | null = null;
 let thinking = false;
+let botMove: Move | null = null;
+let focused = false;
 
 const movesFrom = (state: GameState, from: GlobalSquare): readonly Move[] =>
   legalMoves(state).filter((m) => sameSquare(m.from, from));
@@ -42,7 +44,7 @@ const clearSelection = (): void => {
 };
 
 const view = (): void => {
-  const vm: ViewModel = { selected, targets, lastMove, pendingPromotion, thinking };
+  const vm: ViewModel = { selected, targets, lastMove, pendingPromotion, thinking, botMove, focused };
   render(mount, store.getState(), vm, handlers);
 };
 
@@ -61,7 +63,11 @@ const runBotIfNeeded = (): void => {
     }
     const move = chooseMove(current, DEFAULT_DEPTH, rng);
     thinking = false;
-    if (move !== null && store.dispatch(move)) lastMove = move;
+    if (move !== null && store.dispatch(move)) {
+      lastMove = move;
+      botMove = move; // pulsing ring (desktop) + pan/zoom focus (mobile)
+      focused = true;
+    }
     view();
     runBotIfNeeded(); // safe no-op once it is the human's turn
   }, BOT_THINK_MS);
@@ -70,6 +76,7 @@ const runBotIfNeeded = (): void => {
 const commit = (move: Move): void => {
   if (store.dispatch(move)) {
     lastMove = move;
+    botMove = null; // the bot ring/zoom belongs to the bot's last move only
     clearSelection();
     pendingPromotion = null;
   }
@@ -80,6 +87,7 @@ const commit = (move: Move): void => {
 const onCell = (sq: GlobalSquare): void => {
   const state = store.getState();
   if (thinking || pendingPromotion !== null || gameOver(state) || state.toMove !== HUMAN) return;
+  focused = false; // any interaction zooms back out
 
   if (selected !== null) {
     const toSquare = movesFrom(state, selected).filter((m) => sameSquare(m.to, sq));
@@ -128,9 +136,16 @@ const onReset = (): void => {
   lastMove = null;
   pendingPromotion = null;
   thinking = false;
+  botMove = null;
+  focused = false;
   view();
 };
 
-const handlers: Handlers = { onCell, onPromote, onReset };
+const onDismissFocus = (): void => {
+  focused = false;
+  view();
+};
+
+const handlers: Handlers = { onCell, onPromote, onReset, onDismissFocus };
 
 view();
