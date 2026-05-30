@@ -1,7 +1,9 @@
-import { boardOf, offset } from './coords';
-import { debitCredit, grantCredit } from './ledger';
-import { isFrozenBoard } from './moveGen';
-import { boardStatusAfter } from './check';
+import { isSquareAttacked } from './attack';
+import { GRID } from './constants';
+import { boardOf, mkGlobal, offset } from './coords';
+import { debitCredit, grantCredit, hasCredit } from './ledger';
+import { isFrozenBoard, pseudoLegalMoves } from './moveGen';
+import { boardStatusAfter, kingSquare } from './check';
 import { legalMoves } from './legal';
 import { forwardDir, isCrossingType, opposite } from './pieces';
 import { pieceAt, withPieces } from './plane';
@@ -92,26 +94,89 @@ const recomputeTouched = (next: GameState, touched: ReadonlySet<BoardIndex>): Ga
   return status;
 };
 
+const touchedBoards = (move: Move): ReadonlySet<BoardIndex> => {
+  const set = new Set<BoardIndex>([boardOf(move.from), boardOf(move.to)]);
+  if (move.kind === 'en-passant') set.add(boardOf(move.capturedSquare));
+  return set;
+};
+
+const boardGrid = (b: BoardIndex): readonly [number, number] => [b % GRID, Math.floor(b / GRID)];
+
+/** True if a straight (rook/bishop/queen) line from `from` to `to` is obstructed. */
+const pathBlocked = (state: GameState, from: GlobalSquare, to: GlobalSquare): boolean => {
+  const sx = Math.sign(to.gx - from.gx);
+  const sy = Math.sign(to.gy - from.gy);
+  const adx = Math.abs(to.gx - from.gx);
+  const ady = Math.abs(to.gy - from.gy);
+  const straight = sx === 0 || sy === 0 || adx === ady;
+  if (!straight) return false;
+  let gx = from.gx + sx;
+  let gy = from.gy + sy;
+  while (gx !== to.gx || gy !== to.gy) {
+    const sq = mkGlobal(gx, gy);
+    if (sq.ok && pieceAt(state.plane, sq.value) !== null) return true;
+    gx += sx;
+    gy += sy;
+  }
+  return false;
+};
+
+/** Which touched board (if any) leaves the mover's king in check after the move. */
+const selfCheckBoard = (state: GameState, move: Move): BoardIndex | null => {
+  const next = applyUnchecked(state, move);
+  const mover = move.piece.color;
+  for (const b of touchedBoards(move)) {
+    const ks = kingSquare(next.plane, b, mover);
+    if (ks !== null && isSquareAttacked(next.plane, ks, opposite(mover))) return b;
+  }
+  return null;
+};
+
+/** Diagnose the precise reason a (possibly forged) move is illegal, or null if it is legal. */
+const diagnose = (state: GameState, move: Move): MoveError | null => {
+  if (move.piece.color !== state.toMove) return { kind: 'not-your-turn' };
+  const src = pieceAt(state.plane, move.from);
+  if (src === null) return { kind: 'empty-source' };
+  if (src.color !== state.toMove) return { kind: 'wrong-color' };
+  if (isFrozenBoard(state, boardOf(move.from))) return { kind: 'frozen-board', board: boardOf(move.from) };
+
+  const fromBoard = boardOf(move.from);
+  const toBoard = boardOf(move.to);
+  if (fromBoard !== toBoard) {
+    if (!isCrossingType(move.piece.type)) return { kind: 'king-cannot-cross' };
+    const [fx, fy] = boardGrid(fromBoard);
+    const [tx, ty] = boardGrid(toBoard);
+    if (Math.abs(fx - tx) > 1 || Math.abs(fy - ty) > 1) return { kind: 'two-boundaries' };
+    if (!hasCredit(state.ledger, toBoard, move.piece.color, move.piece.type)) {
+      return { kind: 'no-credit', crossing: { fromBoard, toBoard, creditType: move.piece.type } };
+    }
+  }
+
+  // Geometry/legality: is it generated at all, and is it self-check-free?
+  const pseudo = pseudoLegalMoves(state, state.toMove);
+  if (!pseudo.some((m) => movesMatch(m, move))) {
+    return pathBlocked(state, move.from, move.to)
+      ? { kind: 'path-blocked' }
+      : { kind: 'illegal-geometry' };
+  }
+  const checkBoard = selfCheckBoard(state, move);
+  if (checkBoard !== null) return { kind: 'leaves-king-in-check', board: checkBoard };
+
+  return null;
+};
+
 /**
- * The ONLY public state transition. Validates the move against the authoritative
- * legal set, applies the canonical legal move (so caller metadata can't corrupt
- * state), then recomputes status for the up-to-two boards the move touched.
+ * The ONLY public state transition. Diagnoses illegality with a precise error,
+ * otherwise applies the canonical legal move (so caller metadata can't corrupt
+ * state) and recomputes status for the up-to-two boards the move touched.
  */
 export const applyMove = (state: GameState, move: Move): Result<GameState, MoveError> => {
-  if (move.piece.color !== state.toMove) return err({ kind: 'not-your-turn' });
-  const src = pieceAt(state.plane, move.from);
-  if (src === null) return err({ kind: 'empty-source' });
-  if (src.color !== state.toMove) return err({ kind: 'wrong-color' });
-  if (isFrozenBoard(state, boardOf(move.from))) {
-    return err({ kind: 'frozen-board', board: boardOf(move.from) });
-  }
+  const problem = diagnose(state, move);
+  if (problem !== null) return err(problem);
 
   const canonical = legalMoves(state).find((m) => movesMatch(m, move));
   if (canonical === undefined) return err({ kind: 'not-in-legal-set' });
 
   const applied = applyUnchecked(state, canonical);
-  const touched = new Set<BoardIndex>([boardOf(canonical.from), boardOf(canonical.to)]);
-  if (canonical.kind === 'en-passant') touched.add(boardOf(canonical.capturedSquare));
-
-  return ok({ ...applied, status: recomputeTouched(applied, touched) });
+  return ok({ ...applied, status: recomputeTouched(applied, touchedBoards(canonical)) });
 };
