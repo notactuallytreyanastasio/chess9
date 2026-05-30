@@ -1,5 +1,5 @@
 import { isSquareAttacked } from './attack';
-import { FIFTY_MOVE_PLIES, GRID } from './constants';
+import { FIFTY_MOVE_PLIES } from './constants';
 import { allCells, boardOf, mkBoardIndex, mkGlobal, offset, squareAt } from './coords';
 import { insufficientMaterial, isFrozenStatus } from './draws';
 import { debitCredit, grantCredit, hasCredit } from './ledger';
@@ -64,9 +64,9 @@ export const applyUnchecked = (state: GameState, move: Move): GameState => {
   } else if (move.captured !== null) {
     ledger = applyCaptureCredit(ledger, move.to, move.captured);
   }
-  if (move.crossing !== null) {
-    const debited = debitCredit(ledger, move.crossing.toBoard, move.piece.color, move.crossing.creditType);
-    if (debited.ok) ledger = debited.value; // validated moves always hold the credit
+  for (const crossing of move.crossings) {
+    const debited = debitCredit(ledger, crossing.toBoard, move.piece.color, crossing.creditType);
+    if (debited.ok) ledger = debited.value; // validated moves always hold every credit
   }
 
   let enPassant: GlobalSquare | null = null;
@@ -138,7 +138,42 @@ const touchedBoards = (move: Move): ReadonlySet<BoardIndex> => {
   return set;
 };
 
-const boardGrid = (b: BoardIndex): readonly [number, number] => [b % GRID, Math.floor(b / GRID)];
+/**
+ * Ordered list of boards ENTERED walking the straight line from `from` to `to`
+ * (every square's board distinct from the origin board, first-seen order). For a
+ * jump (knight) or non-straight geometry the line walk still visits only the
+ * endpoints conceptually, but callers guard geometry separately; here we walk the
+ * grid line and, for a jump, fall back to the destination board. Returns the
+ * ordered entered boards (empty for a same-board move).
+ */
+const enteredAlongMove = (from: GlobalSquare, to: GlobalSquare): readonly BoardIndex[] => {
+  const originBoard = boardOf(from);
+  const sx = Math.sign(to.gx - from.gx);
+  const sy = Math.sign(to.gy - from.gy);
+  const adx = Math.abs(to.gx - from.gx);
+  const ady = Math.abs(to.gy - from.gy);
+  const straight = (sx === 0 || sy === 0 || adx === ady) && (sx !== 0 || sy !== 0);
+  // Non-straight (knight jump or forged garbage): only the destination matters.
+  if (!straight) {
+    const toBoard = boardOf(to);
+    return toBoard === originBoard ? [] : [toBoard];
+  }
+  const entered: BoardIndex[] = [];
+  let prevBoard = originBoard;
+  let gx = from.gx + sx;
+  let gy = from.gy + sy;
+  for (;;) {
+    const sq = mkGlobal(gx, gy);
+    if (!sq.ok) break;
+    const b = boardOf(sq.value);
+    if (b !== prevBoard && b !== originBoard) entered.push(b);
+    prevBoard = b;
+    if (gx === to.gx && gy === to.gy) break;
+    gx += sx;
+    gy += sy;
+  }
+  return entered;
+};
 
 /** True if a straight (rook/bishop/queen) line from `from` to `to` is obstructed. */
 const pathBlocked = (state: GameState, from: GlobalSquare, to: GlobalSquare): boolean => {
@@ -186,14 +221,18 @@ const diagnose = (state: GameState, move: Move): MoveError | null => {
   if (isFrozenBoard(state, boardOf(move.from))) return { kind: 'frozen-board', board: boardOf(move.from) };
 
   const fromBoard = boardOf(move.from);
-  const toBoard = boardOf(move.to);
-  if (fromBoard !== toBoard) {
+  const entered = enteredAlongMove(move.from, move.to);
+  if (entered.length > 0) {
     if (!isCrossingType(move.piece.type)) return { kind: 'king-cannot-cross' };
-    const [fx, fy] = boardGrid(fromBoard);
-    const [tx, ty] = boardGrid(toBoard);
-    if (Math.abs(fx - tx) > 1 || Math.abs(fy - ty) > 1) return { kind: 'two-boundaries' };
-    if (!hasCredit(state.ledger, toBoard, move.piece.color, move.piece.type)) {
-      return { kind: 'no-credit', crossing: { fromBoard, toBoard, creditType: move.piece.type } };
+    // A move may not enter (pass through OR land on) a frozen board.
+    for (const board of entered) {
+      if (isFrozenBoard(state, board)) return { kind: 'frozen-board', board };
+    }
+    // Every entered board needs a same-type credit; report the FIRST that lacks one.
+    for (const toBoard of entered) {
+      if (!hasCredit(state.ledger, toBoard, move.piece.color, move.piece.type)) {
+        return { kind: 'no-credit', crossing: { fromBoard, toBoard, creditType: move.piece.type } };
+      }
     }
   }
 

@@ -32,7 +32,7 @@ const botMoveTo = (from: GlobalSquare, to: GlobalSquare): NonNullable<ViewModel[
   to,
   piece: { type: 'rook', color: 'black', hasMoved: true },
   captured: null,
-  crossing: null,
+  crossings: [],
 });
 
 describe('render', () => {
