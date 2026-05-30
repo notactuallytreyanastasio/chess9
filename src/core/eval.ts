@@ -4,7 +4,7 @@ import { boardOf } from './coords';
 import { pseudoLegalMoves } from './moveGen';
 import { withPieces } from './plane';
 import { opposite, pieceValue } from './pieces';
-import type { Color, CrossingType, GameState, Move, Plane } from './types';
+import type { Color, CrossingType, GameState, Ledger, Move, Plane } from './types';
 
 export const MATE_SCORE = 1_000_000; // dominates all material so "most checkmates" drives play
 const CHECK_BONUS = 40;
@@ -18,14 +18,16 @@ const CREDIT_TYPES: readonly CrossingType[] = ['pawn', 'knight', 'bishop', 'rook
 const signFor = (color: Color): 1 | -1 => (color === 'white' ? 1 : -1);
 
 /** Does this crossing move land a piece that attacks the enemy king on the destination board? */
-const crossingChecks = (plane: Plane, move: Move, color: Color): boolean => {
+const crossingChecks = (plane: Plane, ledger: Ledger, move: Move, color: Color): boolean => {
   const moved = { type: move.piece.type, color, hasMoved: true };
   const sim = withPieces(plane, [
     [move.from, null],
     [move.to, moved],
   ]);
   const ks = kingSquare(sim, boardOf(move.to), opposite(color));
-  return ks !== null && isSquareAttacked(sim, ks, color);
+  // The crossed piece now stands ON the king's board, so this is a same-board
+  // attack — credit-independent — but isSquareAttacked still needs the ledger.
+  return ks !== null && isSquareAttacked(sim, ledger, ks, color);
 };
 
 /**
@@ -40,7 +42,7 @@ const crossThreat = (state: GameState, color: Color, moves: readonly Move[]): nu
     if (move.crossing === null) continue;
     bonus += CROSS_OPTION;
     if (move.captured !== null) bonus += pieceValue(move.captured.type) / CROSS_CAPTURE_DIV;
-    if (crossingChecks(state.plane, move, color)) bonus += CROSS_CHECK;
+    if (crossingChecks(state.plane, state.ledger, move, color)) bonus += CROSS_CHECK;
   }
   return bonus;
 };

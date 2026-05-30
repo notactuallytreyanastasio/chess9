@@ -12,13 +12,36 @@ const board = (n: number): BoardIndex => {
 };
 
 describe('inCheck', () => {
-  it('detects a rook checking the king on the same board', () => {
+  it('detects a rook checking the king on the same board (no credit needed)', () => {
     const plane = planeOf([
       [sq(0, 7), pc('king', 'white')],
       [sq(7, 7), pc('rook', 'black')],
     ]);
-    const s = stateOf({ plane, toMove: 'white' });
+    // A same-board check needs no crossing credit at all.
+    const s = stateOf({ plane, toMove: 'white', ledger: emptyLedger() });
     expect(inCheck(s, board(0), 'white')).toBe(true);
+  });
+
+  it('credit-backed cross-board check: rook on board 1 checks king on board 0 only with a rook credit', () => {
+    // White king on board 0 at (5,7); black rook on board 1 at (8,7) sharing the
+    // global rank 7 with an open file across the seam (gx 7|8). Un-clipped the
+    // ray reaches the king, but the cross-board check is credit-backed.
+    const plane = planeOf([
+      [sq(5, 7), pc('king', 'white')],
+      [sq(8, 7), pc('rook', 'black')],
+    ]);
+
+    // Without a credit into board 0, the cross-board rook does not check.
+    const noCredit = stateOf({ plane, toMove: 'white', ledger: emptyLedger() });
+    expect(inCheck(noCredit, board(0), 'white')).toBe(false);
+
+    // Toggle a black rook credit into board 0: the flip happens.
+    const withCredit = stateOf({
+      plane,
+      toMove: 'white',
+      ledger: grantCredit(emptyLedger(), board(0), 'black', 'rook'),
+    });
+    expect(inCheck(withCredit, board(0), 'white')).toBe(true);
   });
 });
 
