@@ -123,6 +123,7 @@ const renderBoard = (state: GameState, vm: ViewModel, handlers: Handlers): HTMLE
     const bx = b % GRID_SIDE;
     const by = Math.floor(b / GRID_SIDE);
     const group = el('div', 'board-group');
+    const groupStatus = state.status[b];
 
     for (let r = 0; r < BOARD_SIZE; r++) {
       for (let f = 0; f < BOARD_SIZE; f++) {
@@ -142,6 +143,10 @@ const renderBoard = (state: GameState, vm: ViewModel, handlers: Handlers): HTMLE
         const piece = pieceAt(state.plane, sq);
         if (piece !== null) {
           cell.appendChild(el('span', `piece ${piece.color}`, glyphFor(piece)));
+          // Flag the king under fire so its danger is visible at a glance.
+          if (groupStatus?.kind === 'check' && piece.type === 'king' && piece.color === groupStatus.inCheck) {
+            cell.classList.add('king-check');
+          }
         }
         if (targetSet.has(idx)) cell.classList.add(piece !== null ? 'capture-target' : 'move-target');
 
@@ -149,9 +154,37 @@ const renderBoard = (state: GameState, vm: ViewModel, handlers: Handlers): HTMLE
         group.appendChild(cell);
       }
     }
+
+    // A frozen board gets a clear "this game is over" overlay.
+    if (groupStatus !== undefined) {
+      const overlay = boardOverlay(groupStatus);
+      if (overlay !== null) group.appendChild(overlay);
+    }
     board.appendChild(group);
   }
   return board;
+};
+
+/** Centered overlay label for a frozen (checkmate / stalemate / draw) board, or null. */
+const boardOverlay = (status: BoardStatus): HTMLElement | null => {
+  if (status.kind === 'checkmate') {
+    const won = status.winner === 'white';
+    const o = el('div', `board-overlay ${won ? 'mate-win' : 'mate-loss'}`);
+    o.appendChild(el('div', 'overlay-symbol', '♚'));
+    o.appendChild(el('div', 'overlay-label', 'Checkmate'));
+    o.appendChild(el('div', 'overlay-sub', won ? 'You win' : 'Bot wins'));
+    return o;
+  }
+  if (status.kind === 'stalemate' || status.kind === 'draw') {
+    const o = el('div', 'board-overlay drawn-overlay');
+    o.appendChild(el('div', 'overlay-symbol', '½'));
+    o.appendChild(el('div', 'overlay-label', status.kind === 'stalemate' ? 'Stalemate' : 'Draw'));
+    if (status.kind === 'draw') {
+      o.appendChild(el('div', 'overlay-sub', status.reason === 'fifty-move' ? '50-move' : 'Material'));
+    }
+    return o;
+  }
+  return null;
 };
 
 const PROMO_CHOICES: ReadonlyArray<{ readonly type: PromotionType; readonly glyph: string }> = [

@@ -4,7 +4,7 @@ import { allCells, boardOf, mkBoardIndex, mkGlobal, offset, squareAt } from './c
 import { insufficientMaterial, isFrozenStatus } from './draws';
 import { debitCredit, grantCredit, hasCredit } from './ledger';
 import { isFrozenBoard, pseudoLegalMoves } from './moveGen';
-import { boardStatusAfter } from './check';
+import { inCheck } from './check';
 import { legalMoves } from './legal';
 import { forwardDir, isCrossingType, opposite } from './pieces';
 import { pieceAt, withPieces } from './plane';
@@ -98,8 +98,8 @@ const nextClocks = (
   return state.clocks.map((c, b) => {
     const status = state.status[b];
     if (status !== undefined && isFrozenStatus(status)) return c; // frozen boards stop counting
-    const bi = mkBoardIndexUnsafe(b);
-    return progress && touched.has(bi) ? 0 : c + 1;
+    if (!touched.has(mkBoardIndexUnsafe(b))) return c; // a board no move touched does not tick
+    return progress ? 0 : c + 1; // touched: reset on a pawn move/capture, else tick
   });
 };
 
@@ -115,19 +115,41 @@ const recomputeStatus = (
   touched: ReadonlySet<BoardIndex>,
 ): GameState['status'] => {
   const status: BoardStatus[] = next.status.slice();
+  const legal = legalMoves(next);
+  const defender = next.toMove;
   for (let i = 0; i < status.length; i++) {
     const cur = status[i];
     if (cur === undefined || isFrozenStatus(cur)) continue; // frozen — never recompute
     const b = mkBoardIndexUnsafe(i);
+
+    // Check / checkmate is recomputed for EVERY non-frozen board: because attacks
+    // cross seams, a move can mate (or check) a king on a board it never touched.
+    // Checkmate is evaluated BEFORE the draw rules so a mating move is never
+    // mislabeled a draw.
+    if (inCheck(next, b, defender)) {
+      status[i] = legal.some((m) => boardOf(m.to) === b)
+        ? { kind: 'check', inCheck: defender }
+        : { kind: 'checkmate', loser: defender, winner: opposite(defender) };
+      continue;
+    }
+
+    // Draws apply to any non-frozen board.
+    if (insufficientMaterial(next.plane, b)) {
+      status[i] = { kind: 'draw', reason: 'insufficient-material' };
+      continue;
+    }
     if ((clocks[i] ?? 0) >= FIFTY_MOVE_PLIES) {
       status[i] = { kind: 'draw', reason: 'fifty-move' };
       continue;
     }
-    if (touched.has(b)) {
-      status[i] = insufficientMaterial(next.plane, b)
-        ? { kind: 'draw', reason: 'insufficient-material' }
-        : boardStatusAfter(next, b);
+
+    // Stalemate is only declared on a board this move actually touched, so an idle
+    // board is never frozen merely because the side to move has no activity there.
+    if (touched.has(b) && !legal.some((m) => boardOf(m.from) === b || boardOf(m.to) === b)) {
+      status[i] = { kind: 'stalemate' };
+      continue;
     }
+    status[i] = { kind: 'active' };
   }
   return status;
 };
