@@ -46,7 +46,7 @@ const moveScore = (move: Move): number => {
   if (move.captured !== null) s += 10 * pieceValue(move.captured.type) - pieceValue(move.piece.type);
   if (move.kind === 'en-passant') s += 10 * pieceValue('pawn') - pieceValue('pawn');
   if (move.kind === 'promotion') s += pieceValue(move.promoteTo);
-  if (move.crossing !== null) s += 25;
+  if (move.crossings.length > 0) s += 25 * move.crossings.length;
   return s;
 };
 
