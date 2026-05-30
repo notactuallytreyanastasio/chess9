@@ -1,6 +1,6 @@
 import { isSquareAttacked } from './attack';
 import { BOARD_SIZE } from './constants';
-import { boardOrigin, offset } from './coords';
+import { allCells, boardOrigin, offset, squareAt } from './coords';
 import { movesLandingOn, movesTouching } from './legal';
 import { opposite } from './pieces';
 import { pieceAt } from './plane';
@@ -23,7 +23,23 @@ export const kingSquare = (plane: Plane, board: BoardIndex, color: Color): Globa
 /** Is `color`'s king on `board` currently in check? */
 export const inCheck = (state: GameState, board: BoardIndex, color: Color): boolean => {
   const ks = kingSquare(state.plane, board, color);
-  return ks !== null && isSquareAttacked(state.plane, ks, opposite(color));
+  return ks !== null && isSquareAttacked(state.plane, state.ledger, ks, opposite(color));
+};
+
+/**
+ * Is ANY of `color`'s kings — anywhere on the plane — currently in check? Used
+ * for king-safety after a move: since attack rays cross board seams, a move can
+ * expose a king on a board it never touched, so all of the mover's kings must
+ * be scanned (not just the touched boards).
+ */
+export const ownKingsInCheck = (state: GameState, color: Color): boolean => {
+  const enemy = opposite(color);
+  for (const cell of allCells()) {
+    const p = state.plane[cell];
+    if (p === null || p === undefined || p.type !== 'king' || p.color !== color) continue;
+    if (isSquareAttacked(state.plane, state.ledger, squareAt(cell), enemy)) return true;
+  }
+  return false;
 };
 
 /**

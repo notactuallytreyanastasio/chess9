@@ -1,10 +1,10 @@
 import { isSquareAttacked } from './attack';
 import { FIFTY_MOVE_PLIES } from './constants';
-import { boardOf, mkBoardIndex, mkGlobal, offset } from './coords';
+import { allCells, boardOf, mkBoardIndex, mkGlobal, offset, squareAt } from './coords';
 import { insufficientMaterial, isFrozenStatus } from './draws';
 import { debitCredit, grantCredit, hasCredit } from './ledger';
 import { isFrozenBoard, pseudoLegalMoves } from './moveGen';
-import { boardStatusAfter, kingSquare } from './check';
+import { boardStatusAfter } from './check';
 import { legalMoves } from './legal';
 import { forwardDir, isCrossingType, opposite } from './pieces';
 import { pieceAt, withPieces } from './plane';
@@ -194,13 +194,20 @@ const pathBlocked = (state: GameState, from: GlobalSquare, to: GlobalSquare): bo
   return false;
 };
 
-/** Which touched board (if any) leaves the mover's king in check after the move. */
+/**
+ * Which board (if any) holds a mover's king left in check after the move. Rays
+ * cross seams (un-clipped), so a move can expose ANY of the mover's kings — not
+ * just one on a touched board — hence every own king on the plane is scanned.
+ */
 const selfCheckBoard = (state: GameState, move: Move): BoardIndex | null => {
   const next = applyUnchecked(state, move);
   const mover = move.piece.color;
-  for (const b of touchedBoards(move)) {
-    const ks = kingSquare(next.plane, b, mover);
-    if (ks !== null && isSquareAttacked(next.plane, ks, opposite(mover))) return b;
+  const enemy = opposite(mover);
+  for (const cell of allCells()) {
+    const p = next.plane[cell];
+    if (p === null || p === undefined || p.type !== 'king' || p.color !== mover) continue;
+    const ks = squareAt(cell);
+    if (isSquareAttacked(next.plane, next.ledger, ks, enemy)) return boardOf(ks);
   }
   return null;
 };

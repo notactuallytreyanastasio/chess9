@@ -151,12 +151,12 @@ const genCastle = (
   if (localFile !== KING_HOME_FILE || localRank !== HOME_RANK[color]) return;
 
   const enemy = opposite(color);
-  if (isSquareAttacked(state.plane, from, enemy)) return; // cannot castle out of check
+  if (isSquareAttacked(state.plane, state.ledger, from, enemy)) return; // cannot castle out of check
 
   const at = (file: number): GlobalSquare | null => offset(origin, file, localRank);
   const empty = (sq: GlobalSquare | null): boolean => sq !== null && pieceAt(state.plane, sq) === null;
   const safe = (sq: GlobalSquare | null): boolean =>
-    sq !== null && !isSquareAttacked(state.plane, sq, enemy);
+    sq !== null && !isSquareAttacked(state.plane, state.ledger, sq, enemy);
   const cornerRook = (sq: GlobalSquare | null): boolean => {
     if (sq === null) return false;
     const p = pieceAt(state.plane, sq);

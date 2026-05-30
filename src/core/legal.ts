@@ -1,28 +1,17 @@
 import { boardOf } from './coords';
-import { kingSquare } from './check';
+import { ownKingsInCheck } from './check';
 import { pseudoLegalMoves } from './moveGen';
-import { opposite } from './pieces';
-import { isSquareAttacked } from './attack';
 import { applyUnchecked } from './reducer';
-import type { BoardIndex, Color, GameState, GlobalSquare, Move, PromotionType } from './types';
+import type { BoardIndex, GameState, GlobalSquare, Move, PromotionType } from './types';
 
-/** Boards whose occupancy a move changes (and thus where the mover's king safety may change). */
-const touchedBoards = (move: Move): readonly BoardIndex[] => {
-  const set = new Set<BoardIndex>([boardOf(move.from), boardOf(move.to)]);
-  if (move.kind === 'en-passant') set.add(boardOf(move.capturedSquare));
-  return [...set];
-};
-
-/** Does `move` leave any of the mover's own kings (on a touched board) in check? */
-const leavesOwnKingInCheck = (state: GameState, move: Move): boolean => {
-  const mover: Color = move.piece.color;
-  const next = applyUnchecked(state, move);
-  for (const board of touchedBoards(move)) {
-    const ks = kingSquare(next.plane, board, mover);
-    if (ks !== null && isSquareAttacked(next.plane, ks, opposite(mover))) return true;
-  }
-  return false;
-};
+/**
+ * Does `move` leave ANY of the mover's own kings in check anywhere on the plane?
+ * Because attack rays cross seams (un-clipped), a move can open a line onto a
+ * king on a DIFFERENT board than the one it touches, so king-safety must scan
+ * all of the mover's kings — not just the touched boards.
+ */
+const leavesOwnKingInCheck = (state: GameState, move: Move): boolean =>
+  ownKingsInCheck(applyUnchecked(state, move), move.piece.color);
 
 /** Fully legal moves for the side to move (pseudo-legal minus self-check). */
 export const legalMoves = (state: GameState): readonly Move[] =>
