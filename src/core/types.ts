@@ -73,6 +73,8 @@ interface MoveBase {
   readonly crossing: BoundaryCrossing | null; // non-null iff exactly one boundary is crossed
 }
 
+export type CastleSide = 'king' | 'queen';
+
 export type Move =
   | (MoveBase & { readonly kind: 'normal' })
   | (MoveBase & { readonly kind: 'double-pawn'; readonly crossing: null })
@@ -81,7 +83,14 @@ export type Move =
       readonly capturedSquare: GlobalSquare;
       readonly capturedPawn: Piece;
     })
-  | (MoveBase & { readonly kind: 'promotion'; readonly promoteTo: PromotionType });
+  | (MoveBase & { readonly kind: 'promotion'; readonly promoteTo: PromotionType })
+  | (MoveBase & {
+      readonly kind: 'castle';
+      readonly side: CastleSide;
+      readonly rookFrom: GlobalSquare;
+      readonly rookTo: GlobalSquare;
+      readonly crossing: null; // castling is always within a single board
+    });
 
 // ---- Immutable game state ----
 export interface GameState {

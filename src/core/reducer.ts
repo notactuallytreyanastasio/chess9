@@ -49,6 +49,10 @@ export const applyUnchecked = (state: GameState, move: Move): GameState => {
     [move.to, moved],
   ];
   if (move.kind === 'en-passant') writes.push([move.capturedSquare, null]);
+  if (move.kind === 'castle') {
+    writes.push([move.rookFrom, null]);
+    writes.push([move.rookTo, { type: 'rook', color: move.piece.color, hasMoved: true }]);
+  }
   const plane = withPieces(state.plane, writes);
 
   let ledger = state.ledger;
