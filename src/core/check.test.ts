@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inCheck, isCheckmate, isStalemate } from './check';
+import { inCheck, isCheckmate } from './check';
 import { mkBoardIndex } from './coords';
 import { grantCredit, emptyLedger } from './ledger';
 import { pc, planeOf, sq, stateOf } from './testkit';
@@ -85,10 +85,11 @@ describe('checkmate', () => {
   });
 });
 
-describe('stalemate', () => {
-  it('recognises a lone king with no legal move and no check', () => {
+describe('no per-board stalemate freeze (design choice (a))', () => {
+  it('a boxed-in lone king is not in check and is not checkmate', () => {
     // White king boxed in a corner of board 0 by a black queen + king, not in
-    // check, with no legal square.
+    // check, with no legal square. Under rule (a) this is NOT a per-board
+    // stalemate — the board stays contestable until a real mate or draw rule.
     const plane = planeOf([
       [sq(0, 7), pc('king', 'white')],
       [sq(2, 6), pc('queen', 'black')],
@@ -96,7 +97,6 @@ describe('stalemate', () => {
     ]);
     const s = stateOf({ plane, toMove: 'white' });
     expect(inCheck(s, board(0), 'white')).toBe(false);
-    expect(isStalemate(s, board(0))).toBe(true);
     expect(isCheckmate(s, board(0))).toBe(false);
   });
 });

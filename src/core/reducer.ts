@@ -109,11 +109,7 @@ const mkBoardIndexUnsafe = (n: number): BoardIndex => {
   return r.value;
 };
 
-const recomputeStatus = (
-  next: GameState,
-  clocks: ReadonlyArray<number>,
-  touched: ReadonlySet<BoardIndex>,
-): GameState['status'] => {
+const recomputeStatus = (next: GameState, clocks: ReadonlyArray<number>): GameState['status'] => {
   const status: BoardStatus[] = next.status.slice();
   const legal = legalMoves(next);
   const defender = next.toMove;
@@ -143,12 +139,9 @@ const recomputeStatus = (
       continue;
     }
 
-    // Stalemate is only declared on a board this move actually touched, so an idle
-    // board is never frozen merely because the side to move has no activity there.
-    if (touched.has(b) && !legal.some((m) => boardOf(m.from) === b || boardOf(m.to) === b)) {
-      status[i] = { kind: 'stalemate' };
-      continue;
-    }
+    // No per-board stalemate freeze: a board stays active until a real checkmate
+    // or draw rule fires, keeping the arena contestable. A true no-legal-move
+    // position (none anywhere, not in check) ends the whole game via gameOver().
     status[i] = { kind: 'active' };
   }
   return status;
@@ -286,6 +279,6 @@ export const applyMove = (state: GameState, move: Move): Result<GameState, MoveE
   const applied = applyUnchecked(state, canonical);
   const touched = touchedBoards(canonical);
   const clocks = nextClocks(state, canonical, touched);
-  const status = recomputeStatus({ ...applied, clocks }, clocks, touched);
+  const status = recomputeStatus({ ...applied, clocks }, clocks);
   return ok({ ...applied, clocks, status });
 };

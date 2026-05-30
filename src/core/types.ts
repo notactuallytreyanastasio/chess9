@@ -57,8 +57,10 @@ export type BoardStatus =
   | { readonly kind: 'active' }
   | { readonly kind: 'check'; readonly inCheck: Color } // transient; not frozen
   | { readonly kind: 'checkmate'; readonly loser: Color; readonly winner: Color } // frozen + scored
-  | { readonly kind: 'stalemate' } // frozen, unscored
   | { readonly kind: 'draw'; readonly reason: DrawReason }; // frozen, unscored
+// No per-board "stalemate": boards stay active until a real checkmate or draw rule
+// (insufficient material / 50-move) fires, so the arena stays contestable. A genuine
+// no-legal-move-anywhere position ends the whole game as a draw via gameOver().
 export type BoardStatuses = ReadonlyArray<BoardStatus>; // length 9
 
 // ---- Moves (discriminated union; geometry lives in global space) ----

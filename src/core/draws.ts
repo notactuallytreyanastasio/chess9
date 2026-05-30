@@ -5,7 +5,7 @@ import type { BoardIndex, BoardStatus, Piece, Plane } from './types';
 
 /** A frozen board takes no further part in the game. */
 export const isFrozenStatus = (s: BoardStatus): boolean =>
-  s.kind === 'checkmate' || s.kind === 'stalemate' || s.kind === 'draw';
+  s.kind === 'checkmate' || s.kind === 'draw';
 
 /**
  * Conservative insufficient-material test for one board: true only when neither
