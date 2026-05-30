@@ -8,7 +8,7 @@ import { applyUnchecked } from './reducer';
 import { gameOver } from './scoring';
 import type { BoardIndex, BoardStatus, GameState, Move, Rng } from './types';
 
-export const DEFAULT_DEPTH = 2;
+export const DEFAULT_DEPTH = 3;
 const INTERIOR_BEAM = 6; // moves expanded at interior nodes
 const ROOT_WIDTH = 12; // moves deepened after the shallow root scan
 const TIE_EPS = 1; // centipawns treated as equal for rng tie-breaks
